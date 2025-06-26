@@ -1,0 +1,1476 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+
+// ========================
+// ESTRUTURAS DE DADOS
+// ========================
+
+
+typedef struct {
+    int id;
+    char nome[50];
+    float custo;
+    int classeId;
+} TipoServico;
+
+
+typedef struct {
+    int id;
+    char nome[50];
+    char telefone[20];
+    char email[50];
+} Cliente;
+
+
+typedef struct {
+    int id;
+    int clienteId;
+    int tipoServicoId;
+    int funcionarioId;
+    char dataSolicitacao[11]; // "DD/MM/AAAA"
+    char dataConclusao[11];   // "" se ainda não finalizado
+    int finalizado;           // 0 = pendente, 1 = finalizado
+    float tempoExecutado;
+} OrdemServico;
+
+
+typedef struct {
+    int id;
+    char nome[50];
+    char telefone[20];
+    char email[50];
+} Fornecedor;
+
+
+typedef struct {
+    int id;
+    char nome[50];
+    int fornecedorId;
+    float precoUnitario;
+    int quantidadeEstoque;
+} Peca;
+
+
+typedef struct {
+    int id;
+    char nome[50];
+    char telefone[20];
+    char cargo[30];
+    float totalHorasTrabalhadas;
+    int servicosExecutados;
+} Funcionario;
+
+
+typedef struct {
+    int id;
+    char nome[50];
+} ClasseServico;
+
+
+// ========================
+// FUNÇÕES DE INICIALIZAÇÃO
+// ========================
+
+
+void inicializarSistema() {
+    FILE *f;
+
+
+    const char *arquivos[] = {
+        "tipos_servico.dat", "clientes.dat", "ordens_servico.dat",
+        "fornecedores.dat", "pecas.dat", "funcionarios.dat", "classes_servico.dat"
+    };
+
+
+    printf("Inicializando arquivos do sistema...\n");
+
+
+    for (int i = 0; i < 6; i++) {
+        f = fopen(arquivos[i], "ab+");
+        if (f != NULL) fclose(f);
+    }
+
+
+    printf("Arquivos verificados e prontos para uso.\n");
+}
+
+
+// ========================
+// FUNÇÕES DE CADASTRO
+// ========================
+
+
+// serviço
+void cadastrarTipoServico() {
+    TipoServico ts;
+    FILE *fTs = fopen("tipos_servico.dat", "ab");
+    if (!fTs) {
+        printf("Erro ao abrir arquivo de tipos de serviço.\n");
+        return;
+    }
+
+
+    printf("\n-- Cadastro de Tipo de Serviço --\n");
+    printf("ID: ");
+    scanf("%d", &ts.id);
+    getchar();
+    printf("Nome do serviço: ");
+    fgets(ts.nome, sizeof(ts.nome), stdin);
+    ts.nome[strcspn(ts.nome, "\n")] = '\0';
+    printf("Custo do serviço: R$ ");
+    scanf("%f", &ts.custo);
+
+
+
+
+    fwrite(&ts, sizeof(TipoServico), 1, fTs);
+    fclose(fTs);
+    printf("Tipo de serviço cadastrado com sucesso!\n");
+
+
+
+
+    // ===== Parte extra: Criar Ordem de Serviço associada ====
+    FILE *fCli = fopen("clientes.dat", "rb");
+    FILE *fFunc = fopen("funcionarios.dat", "rb");
+    FILE *fOs = fopen("ordens_servico.dat", "ab");
+
+
+
+
+    if (!fCli || !fFunc || !fOs) {
+        printf("Erro ao acessar arquivos de cliente ou funcionário.\n");
+        if (fCli) fclose(fCli);
+        if (fFunc) fclose(fFunc);
+        if (fOs) fclose(fOs);
+        return;
+    }
+
+
+    OrdemServico os;
+    printf("\n-- Vincular Cliente e Funcionário à Ordem de Serviço --\n");
+
+
+    Cliente c;
+    printf("\n--- Clientes Cadastrados ---\n");
+    while (fread(&c, sizeof(Cliente), 1, fCli) == 1) {
+        printf("ID: %d | Nome: %s\n", c.id, c.nome);
+    }
+    rewind(fCli);
+    printf("Digite o ID do cliente: ");
+    scanf("%d", &os.clienteId);
+
+
+    Funcionario func;
+    printf("\n--- Funcionários Cadastrados ---\n");
+    while (fread(&func, sizeof(Funcionario), 1, fFunc) == 1) {
+        printf("ID: %d | Nome: %s\n", func.id, func.nome);
+    }
+    rewind(fFunc);
+    printf("Digite o ID do funcionário responsável: ");
+    scanf("%d", &os.funcionarioId);
+
+
+    printf("ID da ordem de serviço: ");
+    scanf("%d", &os.id);
+    printf("Data da solicitação (DD/MM/AAAA): ");
+    scanf("%s", os.dataSolicitacao);
+
+
+    strcpy(os.dataConclusao, ""); 
+    os.tipoServicoId = ts.id;      // vincula ao serviço recém-cadastrado
+    os.finalizado = 0;
+    os.tempoExecutado = 0.0;
+
+
+    fwrite(&os, sizeof(OrdemServico), 1, fOs);
+    printf("Ordem de serviço criada com sucesso!\n");
+
+
+    fclose(fCli);
+    fclose(fFunc);
+    fclose(fOs);
+
+
+}
+
+
+void listarTiposServico() {
+    FILE *f = fopen("tipos_servico.dat", "rb");
+    if (!f) {
+        printf("Erro ao abrir arquivo de tipos de serviço.\n");
+        return;
+    }
+
+
+    TipoServico ts;
+    printf("\n--- Tipos de Serviço Cadastrados ---\n");
+    while (fread(&ts, sizeof(TipoServico), 1, f) == 1) {
+        printf("ID: %d | Nome: %s | Custo: R$ %.2f",ts.id, ts.nome, ts.custo);
+    }
+    fclose(f);
+}
+
+
+void editarTipoServico() {
+    int id, encontrado = 0;
+    printf("\n-- Editar Tipo de Serviço --\n");
+    printf("Digite o ID do serviço a ser editado: ");
+    scanf("%d", &id);
+
+
+    FILE *f = fopen("tipos_servico.dat", "rb+");
+    if (!f) {
+        printf("Erro ao abrir o arquivo.\n");
+        return;
+    }
+
+
+    TipoServico ts;
+    while (fread(&ts, sizeof(TipoServico), 1, f) == 1) {
+        if (ts.id == id) {
+            encontrado = 1;
+            getchar(); // limpar buffer
+            printf("Novo nome do serviço: ");
+            fgets(ts.nome, sizeof(ts.nome), stdin);
+            ts.nome[strcspn(ts.nome, "\n")] = '\0';
+            printf("Novo custo: R$ ");
+            scanf("%f", &ts.custo);
+
+
+            fseek(f, -sizeof(TipoServico), SEEK_CUR);
+            fwrite(&ts, sizeof(TipoServico), 1, f);
+            printf("Tipo de serviço atualizado com sucesso!\n");
+            break;
+        }
+    }
+
+
+    if (!encontrado) {
+        printf("Tipo de serviço com ID %d não encontrado.\n", id);
+    }
+
+
+    fclose(f);
+}
+
+
+void excluirTipoServico() {
+    int id, encontrado = 0;
+    printf("\n-- Excluir Tipo de Serviço --\n");
+    printf("Digite o ID do serviço a ser excluído: ");
+    scanf("%d", &id);
+
+
+
+
+    FILE *f = fopen("tipos_servico.dat", "rb");
+    FILE *temp = fopen("temp.dat", "wb");
+    if (!f || !temp) {
+        printf("Erro ao abrir arquivos.\n");
+        if (f) fclose(f);
+        if (temp) fclose(temp);
+        return;
+    }
+
+
+
+
+    TipoServico ts;
+    while (fread(&ts, sizeof(TipoServico), 1, f) == 1) {
+        if (ts.id != id) {
+            fwrite(&ts, sizeof(TipoServico), 1, temp);
+        } else {
+            encontrado = 1;
+        }
+    }
+
+
+
+
+    fclose(f);
+    fclose(temp);
+    remove("tipos_servico.dat");
+    rename("temp.dat", "tipos_servico.dat");
+
+
+
+
+    if (encontrado) {
+        printf("Tipo de serviço excluído com sucesso.\n");
+    } else {
+        printf("ID não encontrado.\n");
+    }
+}
+
+
+// clientes
+
+
+void cadastrarCliente() {
+    Cliente c;
+    FILE *f = fopen("clientes.dat", "ab");
+
+
+    if (!f) {
+        printf("Erro ao abrir arquivo.\n");
+        return;
+    }
+
+
+    printf("\n-- Cadastro de Cliente --\n");
+    printf("ID: ");
+    scanf("%d", &c.id);
+    getchar();
+    printf("Nome: ");
+    fgets(c.nome, sizeof(c.nome), stdin);
+    c.nome[strcspn(c.nome, "\n")] = '\0';
+    printf("Telefone: ");
+    scanf("%s", c.telefone);
+    printf("Email: ");
+    scanf("%s", c.email);
+
+
+    fwrite(&c, sizeof(Cliente), 1, f);
+    fclose(f);
+    printf("Cliente cadastrado com sucesso!\n");
+}
+
+
+void listarClientes() {
+    FILE *f = fopen("clientes.dat", "rb");
+    if (!f) {
+        printf("Erro ao abrir arquivo de clientes.\n");
+        return;
+    }
+
+
+    Cliente c;
+    printf("\n--- Lista de Clientes ---\n");
+    while (fread(&c, sizeof(Cliente), 1, f) == 1) {
+        printf("ID: %d | Nome: %s | Telefone: %s | Email: %s\n",
+               c.id, c.nome, c.telefone, c.email);
+    }
+    fclose(f);
+}
+
+
+void editarCliente() {
+    int id, encontrado = 0;
+    printf("\n-- Editar Cliente --\n");
+    printf("Digite o ID do cliente a ser editado: ");
+    scanf("%d", &id);
+
+
+    FILE *f = fopen("clientes.dat", "rb+");
+    if (!f) {
+        printf("Erro ao abrir arquivo de clientes.\n");
+        return;
+    }
+
+
+    Cliente c;
+    while (fread(&c, sizeof(Cliente), 1, f) == 1) {
+        if (c.id == id) {
+            encontrado = 1;
+            getchar();
+            printf("Novo nome: ");
+            fgets(c.nome, sizeof(c.nome), stdin);
+            c.nome[strcspn(c.nome, "\n")] = '\0';
+            printf("Novo telefone: ");
+            scanf("%s", c.telefone);
+            printf("Novo email: ");
+            scanf("%s", c.email);
+
+
+            fseek(f, -sizeof(Cliente), SEEK_CUR);
+            fwrite(&c, sizeof(Cliente), 1, f);
+            printf("Cliente atualizado com sucesso!\n");
+            break;
+        }
+    }
+
+
+    if (!encontrado) {
+        printf("Cliente com ID %d não encontrado.\n", id);
+    }
+    fclose(f);
+}
+
+
+void excluirCliente() {
+    int id, encontrado = 0;
+    printf("\n-- Excluir Cliente --\n");
+    printf("Digite o ID do cliente a ser excluído: ");
+    scanf("%d", &id);
+
+
+    FILE *f = fopen("clientes.dat", "rb");
+    FILE *temp = fopen("temp.dat", "wb");
+    if (!f || !temp) {
+        printf("Erro ao abrir arquivos.\n");
+        if (f) fclose(f);
+        if (temp) fclose(temp);
+        return;
+    }
+
+
+    Cliente c;
+    while (fread(&c, sizeof(Cliente), 1, f) == 1) {
+        if (c.id != id) {
+            fwrite(&c, sizeof(Cliente), 1, temp);
+        } else {
+            encontrado = 1;
+        }
+    }
+
+
+    fclose(f);
+    fclose(temp);
+    remove("clientes.dat");
+    rename("temp.dat", "clientes.dat");
+
+
+    if (encontrado) {
+        printf("Cliente excluído com sucesso!\n");
+    } else {
+        printf("ID não encontrado.\n");
+    }
+}
+
+
+// Funcionarios
+
+
+void cadastrarFuncionario() {
+    Funcionario func;
+    FILE *f = fopen("funcionarios.dat", "ab");
+
+
+    if (!f) {
+        printf("Erro ao abrir arquivo.\n");
+        return;
+    }
+
+
+    printf("\n-- Cadastro de Funcionário --\n");
+    printf("ID: ");
+    scanf("%d", &func.id);
+    getchar();
+    printf("Nome: ");
+    fgets(func.nome, sizeof(func.nome), stdin);
+    func.nome[strcspn(func.nome, "\n")] = '\0';
+    printf("Telefone: ");
+    scanf("%s", func.telefone);
+    printf("Cargo: ");
+    scanf("%s", func.cargo);
+
+
+    func.totalHorasTrabalhadas = 0.0;
+    func.servicosExecutados = 0;
+
+
+    fwrite(&func, sizeof(Funcionario), 1, f);
+    fclose(f);
+    printf("Funcionário cadastrado com sucesso!\n");
+}
+
+
+void listarFuncionarios() {
+    FILE *f = fopen("funcionarios.dat", "rb");
+    if (!f) {
+        printf("Erro ao abrir arquivo de funcionários.\n");
+        return;
+    }
+
+
+    Funcionario func;
+    printf("\n--- Lista de Funcionários ---\n");
+    while (fread(&func, sizeof(Funcionario), 1, f) == 1) {
+        printf("ID: %d | Nome: %s | Telefone: %s | Cargo: %s | Horas: %.2f | Serviços: %d\n",
+               func.id, func.nome, func.telefone, func.cargo,
+               func.totalHorasTrabalhadas, func.servicosExecutados);
+    }
+    fclose(f);
+}
+
+
+void editarFuncionario() {
+    int id, encontrado = 0;
+    printf("\n-- Editar Funcionário --\n");
+    printf("Digite o ID do funcionário a ser editado: ");
+    scanf("%d", &id);
+
+
+    FILE *f = fopen("funcionarios.dat", "rb+");
+    if (!f) {
+        printf("Erro ao abrir arquivo de funcionários.\n");
+        return;
+    }
+
+
+    Funcionario func;
+    while (fread(&func, sizeof(Funcionario), 1, f) == 1) {
+        if (func.id == id) {
+            encontrado = 1;
+            getchar(); // limpar buffer
+
+
+            printf("Novo nome: ");
+            fgets(func.nome, sizeof(func.nome), stdin);
+            func.nome[strcspn(func.nome, "\n")] = '\0';
+
+
+            printf("Novo telefone: ");
+            scanf("%s", func.telefone);
+
+
+            printf("Novo cargo: ");
+            scanf("%s", func.cargo);
+
+
+            fseek(f, -sizeof(Funcionario), SEEK_CUR);
+            fwrite(&func, sizeof(Funcionario), 1, f);
+            printf("Funcionário atualizado com sucesso!\n");
+            break;
+        }
+    }
+
+
+    if (!encontrado) {
+        printf("Funcionário com ID %d não encontrado.\n", id);
+    }
+
+
+    fclose(f);
+}
+
+
+void excluirFuncionario() {
+    int id, encontrado = 0;
+    printf("\n-- Excluir Funcionário --\n");
+    printf("Digite o ID do funcionário a ser excluído: ");
+    scanf("%d", &id);
+
+
+    FILE *f = fopen("funcionarios.dat", "rb");
+    FILE *temp = fopen("temp.dat", "wb");
+
+
+    if (!f || !temp) {
+        printf("Erro ao abrir arquivos.\n");
+        if (f) fclose(f);
+        if (temp) fclose(temp);
+        return;
+    }
+
+
+    Funcionario func;
+    while (fread(&func, sizeof(Funcionario), 1, f) == 1) {
+        if (func.id != id) {
+            fwrite(&func, sizeof(Funcionario), 1, temp);
+        } else {
+            encontrado = 1;
+        }
+    }
+
+
+    fclose(f);
+    fclose(temp);
+    remove("funcionarios.dat");
+    rename("temp.dat", "funcionarios.dat");
+
+
+    if (encontrado) {
+        printf("Funcionário excluído com sucesso!\n");
+    } else {
+        printf("ID não encontrado.\n");
+    }
+}
+
+
+// === PEÇAS ===
+
+
+void cadastrarPeca() {
+    Peca p;
+    FILE *f = fopen("pecas.dat", "ab");
+    FILE *fnd = fopen("fornecedores.dat", "rb");
+
+
+
+
+    if (!f || !fnd) {
+        printf("Erro ao abrir arquivos.\n");
+        if (f) fclose(f);
+        if (fnd) fclose(fnd);
+        return;
+    }
+
+
+
+
+    printf("\n-- Cadastro de Peça --\n");
+    printf("ID: ");
+    scanf("%d", &p.id);
+    getchar();
+    printf("Nome da peça: ");
+    fgets(p.nome, sizeof(p.nome), stdin);
+    p.nome[strcspn(p.nome, "\n")] = '\0';
+
+
+
+
+    // Exibe fornecedores cadastrados
+    Fornecedor f_temp;
+    printf("\n--- Fornecedores Disponíveis ---\n");
+    while (fread(&f_temp, sizeof(Fornecedor), 1, fnd) == 1) {
+        printf("ID: %d | Nome: %s\n", f_temp.id, f_temp.nome);
+    }
+    rewind(fnd);
+
+
+
+
+    int idValido = 0;
+    while (!idValido) {
+        printf("Digite o ID do fornecedor: ");
+        scanf("%d", &p.fornecedorId);
+
+
+
+
+        // Verifica se o ID existe
+        rewind(fnd);
+        while (fread(&f_temp, sizeof(Fornecedor), 1, fnd) == 1) {
+            if (f_temp.id == p.fornecedorId) {
+                idValido = 1;
+                break;
+            }
+        }
+
+
+
+
+        if (!idValido) {
+            printf("Fornecedor não encontrado. Tente novamente.\n");
+        }
+    }
+
+
+
+
+    printf("Preço unitário: R$ ");
+    scanf("%f", &p.precoUnitario);
+    printf("Quantidade em estoque: ");
+    scanf("%d", &p.quantidadeEstoque);
+
+
+
+
+    fwrite(&p, sizeof(Peca), 1, f);
+    fclose(f);
+    fclose(fnd);
+    printf("Peça cadastrada com sucesso!\n");
+}
+
+
+
+
+void listarPecas() {
+    FILE *f = fopen("pecas.dat", "rb");
+    if (!f) {
+        printf("Erro ao abrir arquivo de peças.\n");
+        return;
+    }
+    Peca p;
+    printf("\n--- Lista de Peças ---\n");
+    while (fread(&p, sizeof(Peca), 1, f) == 1) {
+        printf("ID: %d | Nome: %s | Fornecedor ID: %d | Preço: R$%.2f | Estoque: %d\n",
+               p.id, p.nome, p.fornecedorId, p.precoUnitario, p.quantidadeEstoque);
+    }
+    fclose(f);
+}
+
+
+
+
+void editarPeca() {
+    int id, encontrado = 0;
+    printf("\n-- Editar Peça --\n");
+    printf("Digite o ID da peça a ser editada: ");
+    scanf("%d", &id);
+
+
+
+
+    FILE *f = fopen("pecas.dat", "rb+");
+    if (!f) {
+        printf("Erro ao abrir arquivo de peças.\n");
+        return;
+    }
+
+
+
+
+    Peca p;
+    while (fread(&p, sizeof(Peca), 1, f) == 1) {
+        if (p.id == id) {
+            encontrado = 1;
+            getchar();
+            printf("Novo nome: ");
+            fgets(p.nome, sizeof(p.nome), stdin);
+            p.nome[strcspn(p.nome, "\n")] = '\0';
+            printf("Novo ID do fornecedor: ");
+            scanf("%d", &p.fornecedorId);
+            printf("Novo preço unitário: R$ ");
+            scanf("%f", &p.precoUnitario);
+            printf("Nova quantidade em estoque: ");
+            scanf("%d", &p.quantidadeEstoque);
+
+
+
+
+            fseek(f, -sizeof(Peca), SEEK_CUR);
+            fwrite(&p, sizeof(Peca), 1, f);
+            printf("Peça atualizada com sucesso!\n");
+            break;
+        }
+    }
+    if (!encontrado) {
+        printf("Peça com ID %d não encontrada.\n", id);
+    }
+    fclose(f);
+}
+
+
+
+
+void excluirPeca() {
+    int id, encontrado = 0;
+    printf("\n-- Excluir Peça --\n");
+    printf("Digite o ID da peça a ser excluída: ");
+    scanf("%d", &id);
+
+
+
+
+    FILE *f = fopen("pecas.dat", "rb");
+    FILE *temp = fopen("temp.dat", "wb");
+    if (!f || !temp) {
+        printf("Erro ao abrir arquivos.\n");
+        if (f) fclose(f);
+        if (temp) fclose(temp);
+        return;
+    }
+
+
+
+
+    Peca p;
+    while (fread(&p, sizeof(Peca), 1, f) == 1) {
+        if (p.id != id) {
+            fwrite(&p, sizeof(Peca), 1, temp);
+        } else {
+            encontrado = 1;
+        }
+    }
+
+
+
+
+    fclose(f);
+    fclose(temp);
+    remove("pecas.dat");
+    rename("temp.dat", "pecas.dat");
+
+
+
+
+    if (encontrado) {
+        printf("Peça excluída com sucesso!\n");
+    } else {
+        printf("ID não encontrado.\n");
+    }
+}
+
+
+
+
+// === FORNECEDORES ===
+
+
+
+
+void cadastrarFornecedor() {
+    Fornecedor fnd;
+    FILE *f = fopen("fornecedores.dat", "ab");
+
+
+
+
+
+
+
+
+    if (!f) {
+        printf("Erro ao abrir arquivo.\n");
+        return;
+    }
+
+
+
+
+
+
+
+
+    printf("\n-- Cadastro de Fornecedor --\n");
+    printf("ID: ");
+    scanf("%d", &fnd.id);
+    getchar();
+    printf("Nome: ");
+    fgets(fnd.nome, sizeof(fnd.nome), stdin);
+    fnd.nome[strcspn(fnd.nome, "\n")] = '\0';
+    printf("Telefone: ");
+    scanf("%s", fnd.telefone);
+    printf("Email: ");
+    scanf("%s", fnd.email);
+
+
+
+
+
+
+
+
+    fwrite(&fnd, sizeof(Fornecedor), 1, f);
+    fclose(f);
+    printf("Fornecedor cadastrado com sucesso!\n");
+}
+
+
+
+
+void listarFornecedores() {
+    FILE *f = fopen("fornecedores.dat", "rb");
+    if (!f) {
+        printf("Erro ao abrir arquivo de fornecedores.\n");
+        return;
+    }
+
+
+
+
+    Fornecedor fnd;
+    printf("\n--- Lista de Fornecedores ---\n");
+    while (fread(&fnd, sizeof(Fornecedor), 1, f) == 1) {
+        printf("ID: %d | Nome: %s | Telefone: %s | Email: %s\n",
+               fnd.id, fnd.nome, fnd.telefone, fnd.email);
+    }
+    fclose(f);
+}
+
+
+
+
+void editarFornecedor() {
+    int id, encontrado = 0;
+    printf("\n-- Editar Fornecedor --\n");
+    printf("Digite o ID do fornecedor: ");
+    scanf("%d", &id);
+
+
+
+
+    FILE *f = fopen("fornecedores.dat", "rb+");
+    if (!f) {
+        printf("Erro ao abrir arquivo.\n");
+        return;
+    }
+
+
+
+
+    Fornecedor fnd;
+    while (fread(&fnd, sizeof(Fornecedor), 1, f) == 1) {
+        if (fnd.id == id) {
+            encontrado = 1;
+            getchar();
+            printf("Novo nome: ");
+            fgets(fnd.nome, sizeof(fnd.nome), stdin);
+            fnd.nome[strcspn(fnd.nome, "\n")] = '\0';
+            printf("Novo telefone: ");
+            scanf("%s", fnd.telefone);
+            printf("Novo email: ");
+            scanf("%s", fnd.email);
+
+
+
+
+            fseek(f, -sizeof(Fornecedor), SEEK_CUR);
+            fwrite(&fnd, sizeof(Fornecedor), 1, f);
+            printf("Fornecedor atualizado com sucesso!\n");
+            break;
+        }
+    }
+    if (!encontrado) {
+        printf("Fornecedor com ID %d não encontrado.\n", id);
+    }
+    fclose(f);
+}
+
+
+
+
+void excluirFornecedor() {
+    int id, encontrado = 0;
+    printf("\n-- Excluir Fornecedor --\n");
+    printf("Digite o ID do fornecedor: ");
+    scanf("%d", &id);
+
+
+
+
+    FILE *f = fopen("fornecedores.dat", "rb");
+    FILE *temp = fopen("temp.dat", "wb");
+    if (!f || !temp) {
+        printf("Erro ao abrir arquivos.\n");
+        if (f) fclose(f);
+        if (temp) fclose(temp);
+        return;
+    }
+
+
+
+
+    Fornecedor fnd;
+    while (fread(&fnd, sizeof(Fornecedor), 1, f) == 1) {
+        if (fnd.id != id) {
+            fwrite(&fnd, sizeof(Fornecedor), 1, temp);
+        } else {
+            encontrado = 1;
+        }
+    }
+
+
+
+
+    fclose(f);
+    fclose(temp);
+    remove("fornecedores.dat");
+    rename("temp.dat", "fornecedores.dat");
+
+
+
+
+    if (encontrado) {
+        printf("Fornecedor excluído com sucesso!\n");
+    } else {
+        printf("ID não encontrado.\n");
+    }
+}
+
+
+void listarFuncionariosComServicos() {
+    FILE *ff = fopen("funcionarios.dat", "rb");
+    FILE *fos = fopen("ordens_servico.dat", "rb");
+    FILE *fts = fopen("tipos_servico.dat", "rb");
+
+
+
+
+    if (!ff || !fos || !fts) {
+        printf("Erro ao abrir arquivos necessários.\n");
+        if (ff) fclose(ff);
+        if (fos) fclose(fos);
+        if (fts) fclose(fts);
+        return;
+    }
+
+
+    Funcionario func;
+    OrdemServico os;
+    TipoServico ts;
+
+
+    printf("\n=== LISTA DE FUNCIONÁRIOS E SERVIÇOS EXECUTADOS ===\n");
+
+
+    while (fread(&func, sizeof(Funcionario), 1, ff) == 1) {
+        printf("\n---------------------------------------------\n");
+        printf("ID: %d\n", func.id);
+        printf("Nome: %s\n", func.nome);
+        printf("Telefone: %s\n", func.telefone);
+        printf("Cargo: %s\n", func.cargo);
+        printf("Total de horas trabalhadas: %.2f\n", func.totalHorasTrabalhadas);
+        printf("Serviços executados: %d\n", func.servicosExecutados);
+        printf(">> Serviços realizados:\n");
+
+
+        int encontrouServicos = 0;
+        rewind(fos);
+        while (fread(&os, sizeof(OrdemServico), 1, fos) == 1) {
+            if (os.funcionarioId == func.id) {
+                rewind(fts);
+                char nomeServico[50] = "Desconhecido";
+                while (fread(&ts, sizeof(TipoServico), 1, fts) == 1) {
+                    if (ts.id == os.tipoServicoId) {
+                        strcpy(nomeServico, ts.nome);
+                        break;
+                    }
+                }
+                printf("- Serviço: %s | Data: %s | Status: %s | Tempo: %.2fh\n",
+                    nomeServico,
+                    os.dataSolicitacao,
+                    os.finalizado ? "Finalizado" : "Pendente",
+                    os.tempoExecutado);
+                encontrouServicos = 1;
+            }
+        }
+
+
+        if (!encontrouServicos) {
+            printf("Nenhum serviço executado.\n");
+        }
+    }
+
+
+    fclose(ff);
+    fclose(fos);
+    fclose(fts);
+}
+
+
+void finalizarOrdemServico() {
+    int id;
+    printf("\n-- Finalizar Ordem de Serviço --\n");
+    printf("Digite o ID da ordem de serviço a ser finalizada: ");
+    scanf("%d", &id);
+
+
+    OrdemServico os;
+    int encontrado = 0;
+
+
+    FILE *f = fopen("ordens_servico.dat", "rb+");
+    if (!f) {
+        printf("Erro ao abrir o arquivo de ordens de serviço.\n");
+        return;
+    }
+
+
+    while (fread(&os, sizeof(OrdemServico), 1, f) == 1) {
+        if (os.id == id) {
+            encontrado = 1;
+            if (os.finalizado) {
+                printf("Esta ordem de serviço já foi finalizada.\n");
+                fclose(f);
+                return;
+            }
+
+
+            printf("Data de conclusão (DD/MM/AAAA): ");
+            scanf("%s", os.dataConclusao);
+            printf("Tempo executado (em horas): ");
+            scanf("%f", &os.tempoExecutado);
+            os.finalizado = 1;
+
+
+            fseek(f, -sizeof(OrdemServico), SEEK_CUR);
+            fwrite(&os, sizeof(OrdemServico), 1, f);
+            fclose(f);
+
+
+            // Atualiza funcionário
+            FILE *ff = fopen("funcionarios.dat", "rb+");
+            if (!ff) {
+                printf("Erro ao abrir arquivo de funcionários.\n");
+                return;
+            }
+
+
+            Funcionario func;
+            while (fread(&func, sizeof(Funcionario), 1, ff) == 1) {
+                if (func.id == os.funcionarioId) {
+                    func.totalHorasTrabalhadas += os.tempoExecutado;
+                    func.servicosExecutados += 1;
+
+
+                    fseek(ff, -sizeof(Funcionario), SEEK_CUR);
+                    fwrite(&func, sizeof(Funcionario), 1, ff);
+                    break;
+                }
+            }
+            fclose(ff);
+
+
+            printf("Ordem de serviço finalizada com sucesso!\n");
+            return;
+        }
+    }
+
+
+    fclose(f);
+    if (!encontrado) {
+        printf("Ordem de serviço com ID %d não encontrada.\n", id);
+    }
+}
+
+
+void cadastrarClasseServico() {
+    FILE *f = fopen("classes_servico.dat", "ab");
+    if (!f) {
+        printf("Erro ao abrir arquivo de classes de serviço.\n");
+        return;
+    }
+
+
+    ClasseServico cs;
+    printf("\n-- Cadastro de Classe de Serviço --\n");
+    printf("ID: ");
+    scanf("%d", &cs.id);
+    getchar();
+    printf("Nome da classe: ");
+    fgets(cs.nome, sizeof(cs.nome), stdin);
+    cs.nome[strcspn(cs.nome, "\n")] = '\0';
+
+
+    fwrite(&cs, sizeof(ClasseServico), 1, f);
+    fclose(f);
+    printf("Classe de serviço cadastrada com sucesso!\n");
+}
+
+
+// classes
+
+
+void listarClassesServico() {
+    FILE *f = fopen("classes_servico.dat", "rb");
+    if (!f) {
+        printf("Erro ao abrir arquivo de classes de serviço.\n");
+        return;
+    }
+
+
+    ClasseServico cs;
+    printf("\n=== LISTA DE CLASSES DE SERVIÇO ===\n");
+    while (fread(&cs, sizeof(ClasseServico), 1, f) == 1) {
+        printf("ID: %d | Nome: %s\n", cs.id, cs.nome);
+    }
+
+
+    fclose(f);
+}
+void editarClasseServico() {
+    int id;
+    printf("\n-- Editar Classe de Serviço --\n");
+    printf("Digite o ID da classe a ser editada: ");
+    scanf("%d", &id);
+    getchar();
+
+
+    FILE *f = fopen("classes_servico.dat", "rb+");
+    if (!f) {
+        printf("Erro ao abrir o arquivo.\n");
+        return;
+    }
+
+
+    ClasseServico cs;
+    int encontrado = 0;
+    while (fread(&cs, sizeof(ClasseServico), 1, f) == 1) {
+        if (cs.id == id) {
+            printf("Nome atual: %s\n", cs.nome);
+            printf("Novo nome: ");
+            fgets(cs.nome, sizeof(cs.nome), stdin);
+            cs.nome[strcspn(cs.nome, "\n")] = '\0';
+
+
+            fseek(f, -sizeof(ClasseServico), SEEK_CUR);
+            fwrite(&cs, sizeof(ClasseServico), 1, f);
+            encontrado = 1;
+            printf("Classe de serviço atualizada com sucesso!\n");
+            break;
+        }
+    }
+
+
+    if (!encontrado)
+        printf("Classe com ID %d não encontrada.\n", id);
+
+
+    fclose(f);
+}
+void excluirClasseServico() {
+    int id;
+    printf("\n-- Excluir Classe de Serviço --\n");
+    printf("Digite o ID da classe a ser excluída: ");
+    scanf("%d", &id);
+
+
+    FILE *f = fopen("classes_servico.dat", "rb");
+    FILE *temp = fopen("temp.dat", "wb");
+    if (!f || !temp) {
+        printf("Erro ao abrir arquivos.\n");
+        if (f) fclose(f);
+        if (temp) fclose(temp);
+        return;
+    }
+
+
+    ClasseServico cs;
+    int encontrado = 0;
+    while (fread(&cs, sizeof(ClasseServico), 1, f) == 1) {
+        if (cs.id == id) {
+            encontrado = 1;
+            continue; // pula a gravação = "exclui"
+        }
+        fwrite(&cs, sizeof(ClasseServico), 1, temp);
+    }
+
+
+    fclose(f);
+    fclose(temp);
+
+
+    remove("classes_servico.dat");
+    rename("temp.dat", "classes_servico.dat");
+
+
+    if (encontrado)
+        printf("Classe de serviço excluída com sucesso.\n");
+    else
+        printf("Classe com ID %d não encontrada.\n", id);
+}
+
+
+// ========================
+// MENU PRINCIPAL
+// ========================
+
+
+
+
+void menuTiposServico() {
+    int opcao;
+    do {
+        printf("\n=== MENU TIPOS DE SERVIÇO ===\n");
+        printf("1. Cadastrar Tipo de Serviço\n");
+        printf("2. Editar Tipo de Serviço\n");
+        printf("3. Excluir Tipo de Serviço\n");
+        printf("4. Listar Tipos de Serviço\n");
+        printf("0. Voltar\n");
+        printf("Escolha uma opção: ");
+        scanf("%d", &opcao);
+
+
+        switch (opcao) {
+            case 1: cadastrarTipoServico(); break;
+            case 2: editarTipoServico(); break;
+            case 3: excluirTipoServico(); break;
+            case 4: listarTiposServico(); break;
+            case 0: break;
+            default: printf("Opção inválida.\n");
+        }
+    } while (opcao != 0);
+}
+
+
+
+
+void menuClientes() {
+    int opcao;
+    do {
+        printf("\n=== MENU CLIENTES ===\n");
+        printf("1. Cadastrar Cliente\n");
+        printf("2. Editar Cliente\n");
+        printf("3. Excluir Cliente\n");
+        printf("4. Listar Clientes\n");
+        printf("0. Voltar\n");
+        printf("Escolha uma opção: ");
+        scanf("%d", &opcao);
+
+
+
+
+        switch (opcao) {
+            case 1: cadastrarCliente(); break;
+            case 2: editarCliente(); break;
+            case 3: excluirCliente(); break;
+            case 4: listarClientes(); break;
+            case 0: break;
+            default: printf("Opção inválida!\n");
+        }
+    } while (opcao != 0);
+}
+
+
+
+
+void menuFuncionarios() {
+    int opcao;
+    do {
+        printf("\n=== MENU FUNCIONÁRIOS ===\n");
+        printf("1. Cadastrar Funcionário\n");
+        printf("2. Editar Funcionário\n");
+        printf("3. Excluir Funcionário\n");
+        printf("4. Listar Funcionários\n");
+        printf("5. Listar Funcionários com Serviços Executados\n");
+        printf("0. Voltar\n");
+        printf("Escolha uma opção: ");
+        scanf("%d", &opcao);
+
+
+
+
+        switch (opcao) {
+            case 1: cadastrarFuncionario(); break;
+            case 2: editarFuncionario(); break;
+            case 3: excluirFuncionario(); break;
+            case 4: listarFuncionarios(); break;
+            case 5: listarFuncionariosComServicos(); break;
+            case 0: break;
+            default: printf("Opção inválida.\n");
+        }
+    } while (opcao != 0);
+}
+
+
+
+
+void menuPecas() {
+    int opcao;
+    do {
+        printf("\n=== MENU PEÇAS ===\n");
+        printf("1. Cadastrar Peça\n");
+        printf("2. Editar Peça\n");
+        printf("3. Excluir Peça\n");
+        printf("4. Listar Peças\n");
+        printf("0. Voltar\n");
+        printf("Escolha uma opção: ");
+        scanf("%d", &opcao);
+
+
+
+
+        switch (opcao) {
+            case 1: cadastrarPeca(); break;
+            case 2: editarPeca(); break;
+            case 3: excluirPeca(); break;
+            case 4: listarPecas(); break;
+            case 0: break;
+            default: printf("Opção inválida!\n");
+        }
+    } while (opcao != 0);
+}
+
+
+
+
+void menuFornecedores() {
+    int opcao;
+    do {
+        printf("\n=== MENU FORNECEDORES ===\n");
+        printf("1. Cadastrar Fornecedor\n");
+        printf("2. Editar Fornecedor\n");
+        printf("3. Excluir Fornecedor\n");
+        printf("4. Listar Fornecedores\n");
+        printf("0. Voltar\n");
+        printf("Escolha uma opção: ");
+        scanf("%d", &opcao);
+
+
+
+
+        switch (opcao) {
+            case 1: cadastrarFornecedor(); break;
+            case 2: editarFornecedor(); break;
+            case 3: excluirFornecedor(); break;
+            case 4: listarFornecedores(); break;
+            case 0: break;
+            default: printf("Opção inválida!\n");
+        }
+    } while (opcao != 0);
+}
+
+
+void menuClassesServico() {
+    int opcao;
+    do {
+        printf("\n=== MENU CLASSES DE SERVIÇO ===\n");
+        printf("1. Cadastrar Classe\n");
+        printf("2. Listar Classes\n");
+        printf("3. Editar Classe\n");
+        printf("4. Excluir Classe\n");
+        printf("0. Voltar\n");
+        printf("Escolha uma opção: ");
+        scanf("%d", &opcao);
+
+
+        switch (opcao) {
+            case 1: cadastrarClasseServico(); break;
+            case 2: listarClassesServico(); break;
+            case 3: editarClasseServico(); break;
+            case 4: excluirClasseServico(); break;
+            case 0: break;
+            default: printf("Opção inválida.\n");
+        }
+    } while (opcao != 0);
+}
+
+
+void menuEntradas() {
+    int opcao;
+    do {
+        printf("\n==== MENU PRINCIPAL ====\n");
+        printf("1. Inicializar sistema\n");
+        printf("2. Gerenciar Tipos de Serviço\n");
+        printf("3. Gerenciar Clientes\n");
+        printf("4. Gerenciar Funcionários\n");
+        printf("5. Gerenciar Peças\n");
+        printf("6. Gerenciar Fornecedores\n");
+        printf("7. Listar Funcionários e Serviços\n");
+        printf("8. Finalizar Ordem de Serviço\n");
+        printf("9. Gerenciar Classes de Serviço\n");
+        printf("0. Sair\n");
+        printf("Escolha uma opção: ");
+        scanf("%d", &opcao);
+
+
+
+
+        switch (opcao) {
+            case 1: inicializarSistema(); break;
+            case 2: menuTiposServico(); break;    
+            case 3: menuClientes(); break;
+            case 4: menuFuncionarios(); break;     
+            case 5: menuPecas(); break;
+            case 6: menuFornecedores(); break;
+            case 7: listarFuncionariosComServicos(); break;
+            case 8: finalizarOrdemServico(); break;
+            case 9: menuClassesServico(); break;
+            case 0: printf("Encerrando sistema...\n"); break;
+            default: printf("Opção inválida.\n");
+        }
+    } while (opcao != 0);
+}
+// ========================
+// FUNÇÃO START E MAIN
+// ========================
+
+
+void start() {
+    printf("\n=========================================\n");
+    printf("  SISTEMA DE ASSISTÊNCIA TÉCNICA - START \n");
+    printf("=========================================\n");
+    menuEntradas();
+}
+
+
+int main() {
+    start();
+    return 0;
+}
