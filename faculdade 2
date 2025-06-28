@@ -1,0 +1,645 @@
+#include <stdio.h>
+#include <stdlib.hh>
+#include <string.h>
+#include <time.h> // <-- BIBLIOTECA NOVA, necessária para as funções de data
+
+// ========================
+// ESTRUTURAS DE DADOS
+// ========================
+
+// Estrutura original mantida
+typedef struct {
+    int id;
+    char nome[50];
+    float custo;
+    int classeId;
+} TipoServico;
+
+// Estrutura original mantida
+typedef struct {
+    int id;
+    char nome[50];
+    char telefone[20];
+    char email[50];
+} Cliente;
+
+// =================================================================================
+// ALTERADO: Adicionado o campo 'retirado' para o relatório de serviços não retirados
+// =================================================================================
+typedef struct {
+    int id;
+    int clienteId;
+    int tipoServicoId;
+    int funcionarioId;
+    char dataSolicitacao[11]; // "DD/MM/AAAA" [cite: 4]
+    char dataConclusao[11];   // "" se ainda não finalizado [cite: 4]
+    int finalizado;           // 0 = pendente, 1 = finalizado [cite: 5]
+    int retirado;             // <-- NOVO CAMPO: 0 = não retirado, 1 = retirado
+    float tempoExecutado;
+} OrdemServico;
+
+// Estrutura original mantida
+typedef struct {
+    int id;
+    char nome[50];
+    char telefone[20];
+    char email[50];
+} Fornecedor;
+
+// Estrutura original mantida
+typedef struct {
+    int id;
+    char nome[50];
+    int fornecedorId;
+    float precoUnitario;
+    int quantidadeEstoque;
+} Peca;
+
+// Estrutura original mantida
+typedef struct {
+    int id;
+    char nome[50];
+    char telefone[20];
+    char cargo[30];
+    float totalHorasTrabalhadas;
+    int servicosExecutados;
+} Funcionario;
+
+// Estrutura original mantida
+typedef struct {
+    int id;
+    char nome[50];
+} ClasseServico;
+
+
+// =================================================================================
+// FUNÇÕES NOVAS: Funções auxiliares para trabalhar com datas
+// =================================================================================
+
+// Converte uma string no formato "DD/MM/AAAA" para inteiros
+void parseData(const char *dataStr, int *dia, int *mes, int *ano) {
+    sscanf(dataStr, "%d/%d/%d", dia, mes, ano);
+}
+
+// Obtém a data atual do sistema
+void obterDataAtual(int *dia, int *mes, int *ano) {
+    time_t t = time(NULL);
+    struct tm tm_local = *localtime(&t);
+    *dia = tm_local.tm_mday;
+    *mes = tm_local.tm_mon + 1; // tm_mon é de 0 a 11
+    *ano = tm_local.tm_year + 1900; // tm_year é o número de anos desde 1900
+}
+
+// Verifica se uma data fornecida está na mesma semana que a data atual
+int estaNaSemanaVigente(int dia, int mes, int ano) {
+    time_t t_agora = time(NULL);
+    struct tm tm_agora = *localtime(&t_agora);
+
+    // Cria uma estrutura de tempo para a data a ser verificada
+    struct tm tm_data = {0};
+    tm_data.tm_year = ano - 1900;
+    tm_data.tm_mon = mes - 1;
+    tm_data.tm_mday = dia;
+    mktime(&tm_data); // Normaliza a estrutura tm
+
+    // Compara o ano e o número da semana no ano (de 0 a 53)
+    char buf_agora[10];
+    char buf_data[10];
+    strftime(buf_agora, sizeof(buf_agora), "%Y-%W", &tm_agora);
+    strftime(buf_data, sizeof(buf_data), "%Y-%W", &tm_data);
+
+    if (strcmp(buf_agora, buf_data) == 0) {
+        return 1; // Está na mesma semana
+    }
+    return 0; // Não está na mesma semana
+}
+
+
+// =================================================================================
+// FUNÇÕES NOVAS: Relatórios solicitados
+// =================================================================================
+
+// Relatório 1: Lista de serviços a serem executados no dia e na semana vigente
+void relatorioServicosPendentes() {
+    FILE *fOs = fopen("ordens_servico.dat", "rb");
+    if (!fOs) {
+        printf("Erro ao abrir arquivo de Ordens de Serviço.\n");
+        return;
+    }
+
+    int diaAtual, mesAtual, anoAtual;
+    obterDataAtual(&diaAtual, &mesAtual, &anoAtual);
+
+    printf("\n===========================================================\n");
+    printf("  RELATÓRIO: SERVIÇOS A SEREM EXECUTADOS\n");
+    printf("===========================================================\n");
+
+    OrdemServico os;
+    int encontrouDia = 0;
+    int encontrouSemana = 0;
+
+    printf("\n>> SERVIÇOS PARA HOJE (%02d/%02d/%d):\n", diaAtual, mesAtual, anoAtual);
+    rewind(fOs); // Garante que a leitura comece do início do arquivo
+    while (fread(&os, sizeof(OrdemServico), 1, fOs) == 1) {
+        if (os.finalizado == 0) {
+            int dia, mes, ano;
+            parseData(os.dataSolicitacao, &dia, &mes, &ano);
+            if (dia == diaAtual && mes == mesAtual && ano == anoAtual) {
+                printf("  - OS ID: %d, Cliente ID: %d, Funcionário ID: %d\n", os.id, os.clienteId, os.funcionarioId);
+                encontrouDia = 1;
+            }
+        }
+    }
+    if (!encontrouDia) {
+        printf("  Nenhum serviço agendado para hoje.\n");
+    }
+
+    printf("\n>> SERVIÇOS PARA A SEMANA VIGENTE:\n");
+    rewind(fOs);
+    while (fread(&os, sizeof(OrdemServico), 1, fOs) == 1) {
+        if (os.finalizado == 0) {
+            int dia, mes, ano;
+            parseData(os.dataSolicitacao, &dia, &mes, &ano);
+            if (estaNaSemanaVigente(dia, mes, ano)) {
+                printf("  - OS ID: %d, Data: %s, Cliente ID: %d\n", os.id, os.dataSolicitacao, os.clienteId);
+                encontrouSemana = 1;
+            }
+        }
+    }
+    if (!encontrouSemana) {
+        printf("  Nenhum serviço agendado para esta semana.\n");
+    }
+
+    fclose(fOs);
+}
+
+// Relatório 2: Lista de serviços finalizados, mas não retirados pelo cliente
+void relatorioServicosNaoRetirados() {
+    FILE *fOs = fopen("ordens_servico.dat", "rb");
+    if (!fOs) {
+        printf("Erro ao abrir arquivo de Ordens de Serviço.\n");
+        return;
+    }
+
+    int diaAtual, mesAtual, anoAtual;
+    obterDataAtual(&diaAtual, &mesAtual, &anoAtual);
+
+    printf("\n===========================================================\n");
+    printf("  RELATÓRIO: SERVIÇOS FINALIZADOS AGUARDANDO RETIRADA\n");
+    printf("===========================================================\n");
+
+    OrdemServico os;
+    int encontrouDia = 0;
+    int encontrouSemana = 0;
+
+    printf("\n>> FINALIZADOS HOJE (%02d/%02d/%d) E NÃO RETIRADOS:\n", diaAtual, mesAtual, anoAtual);
+    rewind(fOs);
+    while (fread(&os, sizeof(OrdemServico), 1, fOs) == 1) {
+        if (os.finalizado == 1 && os.retirado == 0) {
+            int dia, mes, ano;
+            parseData(os.dataConclusao, &dia, &mes, &ano);
+            if (dia == diaAtual && mes == mesAtual && ano == anoAtual) {
+                printf("  - OS ID: %d, Cliente ID: %d\n", os.id, os.clienteId);
+                encontrouDia = 1;
+            }
+        }
+    }
+    if (!encontrouDia) {
+        printf("  Nenhum serviço finalizado hoje aguardando retirada.\n");
+    }
+
+    printf("\n>> FINALIZADOS NA SEMANA E NÃO RETIRADOS:\n");
+    rewind(fOs);
+    while (fread(&os, sizeof(OrdemServico), 1, fOs) == 1) {
+        if (os.finalizado == 1 && os.retirado == 0) {
+            int dia, mes, ano;
+            parseData(os.dataConclusao, &dia, &mes, &ano);
+            if (estaNaSemanaVigente(dia, mes, ano)) {
+                printf("  - OS ID: %d, Data Conclusão: %s, Cliente ID: %d\n", os.id, os.dataConclusao, os.clienteId);
+                encontrouSemana = 1;
+            }
+        }
+    }
+    if (!encontrouSemana) {
+        printf("  Nenhum serviço finalizado esta semana aguardando retirada.\n");
+    }
+
+    fclose(fOs);
+}
+
+// Relatórios 3 e 4: Serviços por funcionário (pendentes e finalizados)
+void relatoriosPorFuncionario() {
+    FILE *fFunc = fopen("funcionarios.dat", "rb");
+    FILE *fOs = fopen("ordens_servico.dat", "rb");
+
+    if (!fFunc || !fOs) {
+        printf("Erro ao abrir arquivos de Funcionários ou Ordens de Serviço.\n");
+        if(fFunc) fclose(fFunc);
+        if(fOs) fclose(fOs);
+        return;
+    }
+    
+    int diaAtual, mesAtual, anoAtual;
+    obterDataAtual(&diaAtual, &mesAtual, &anoAtual);
+
+    printf("\n===========================================================\n");
+    printf("  RELATÓRIO DETALHADO POR FUNCIONÁRIO (DIA/SEMANA)\n");
+    printf("===========================================================\n");
+
+    Funcionario func;
+    while (fread(&func, sizeof(Funcionario), 1, fFunc) == 1) {
+        printf("\n------------------------------------------------------\n");
+        printf("  Funcionário: %s (ID: %d)\n", func.nome, func.id);
+        printf("------------------------------------------------------\n");
+
+        OrdemServico os;
+        int encontrouPendentesDia = 0, encontrouPendentesSemana = 0;
+        int encontrouFinalizadosDia = 0, encontrouFinalizadosSemana = 0;
+
+        // --- Tarefas a serem executadas ---
+        printf("  >> Tarefas a serem executadas:\n");
+        
+        printf("     - Hoje (%02d/%02d/%d):\n", diaAtual, mesAtual, anoAtual);
+        rewind(fOs);
+        while(fread(&os, sizeof(OrdemServico), 1, fOs) == 1) {
+            if (os.funcionarioId == func.id && os.finalizado == 0) {
+                int dia, mes, ano;
+                parseData(os.dataSolicitacao, &dia, &mes, &ano);
+                if (dia == diaAtual && mes == mesAtual && ano == anoAtual) {
+                    printf("       - OS ID: %d (Cliente ID: %d)\n", os.id, os.clienteId);
+                    encontrouPendentesDia = 1;
+                }
+            }
+        }
+        if (!encontrouPendentesDia) printf("       Nenhuma tarefa para hoje.\n");
+
+        printf("     - Nesta Semana:\n");
+        rewind(fOs);
+        while(fread(&os, sizeof(OrdemServico), 1, fOs) == 1) {
+            if (os.funcionarioId == func.id && os.finalizado == 0) {
+                int dia, mes, ano;
+                parseData(os.dataSolicitacao, &dia, &mes, &ano);
+                if (estaNaSemanaVigente(dia, mes, ano)) {
+                    printf("       - OS ID: %d (Data: %s)\n", os.id, os.dataSolicitacao);
+                    encontrouPendentesSemana = 1;
+                }
+            }
+        }
+        if (!encontrouPendentesSemana) printf("       Nenhuma tarefa para esta semana.\n");
+
+        // --- Tarefas finalizadas ---
+        printf("\n  >> Tarefas finalizadas:\n");
+        
+        printf("     - Hoje (%02d/%02d/%d):\n", diaAtual, mesAtual, anoAtual);
+        rewind(fOs);
+        while(fread(&os, sizeof(OrdemServico), 1, fOs) == 1) {
+            if (os.funcionarioId == func.id && os.finalizado == 1) {
+                int dia, mes, ano;
+                parseData(os.dataConclusao, &dia, &mes, &ano);
+                if (dia == diaAtual && mes == mesAtual && ano == anoAtual) {
+                    printf("       - OS ID: %d (Tempo Gasto: %.2f horas)\n", os.id, os.tempoExecutado);
+                    encontrouFinalizadosDia = 1;
+                }
+            }
+        }
+        if (!encontrouFinalizadosDia) printf("       Nenhuma tarefa finalizada hoje.\n");
+
+        printf("     - Nesta Semana:\n");
+        rewind(fOs);
+        while(fread(&os, sizeof(OrdemServico), 1, fOs) == 1) {
+            if (os.funcionarioId == func.id && os.finalizado == 1) {
+                int dia, mes, ano;
+                parseData(os.dataConclusao, &dia, &mes, &ano);
+                if (estaNaSemanaVigente(dia, mes, ano)) {
+                    printf("       - OS ID: %d (Data: %s, Tempo: %.2f h)\n", os.id, os.dataConclusao, os.tempoExecutado);
+                    encontrouFinalizadosSemana = 1;
+                }
+            }
+        }
+        if (!encontrouFinalizadosSemana) printf("       Nenhuma tarefa finalizada esta semana.\n");
+    }
+
+    fclose(fFunc);
+    fclose(fOs);
+}
+
+// Relatórios 5 e 6: Relatórios anuais
+void relatoriosAnuais() {
+    int anoRelatorio;
+    printf("\nDigite o ano para gerar os relatórios anuais: ");
+    scanf("%d", &anoRelatorio);
+
+    FILE *fFunc = fopen("funcionarios.dat", "rb");
+    FILE *fOs = fopen("ordens_servico.dat", "rb");
+
+    if (!fFunc || !fOs) {
+        printf("Erro ao abrir arquivos de Funcionários ou Ordens de Serviço.\n");
+        if(fFunc) fclose(fFunc);
+        if(fOs) fclose(fOs);
+        return;
+    }
+    
+    // --- Relatório 5: Individual por Colaborador ---
+    printf("\n===========================================================\n");
+    printf("  RELATÓRIO ANUAL INDIVIDUAL POR COLABORADOR (ANO: %d)\n", anoRelatorio);
+    printf("===========================================================\n");
+    
+    Funcionario func;
+    while (fread(&func, sizeof(Funcionario), 1, fFunc) == 1) {
+        printf("\n-- Funcionário: %s (ID: %d) --\n", func.nome, func.id);
+
+        OrdemServico os;
+        int totalServicos = 0;
+        float totalHoras = 0.0;
+        rewind(fOs);
+        while(fread(&os, sizeof(OrdemServico), 1, fOs) == 1) {
+            if (os.funcionarioId == func.id && os.finalizado == 1) {
+                int dia, mes, ano;
+                parseData(os.dataConclusao, &dia, &mes, &ano);
+                if (ano == anoRelatorio) {
+                    totalServicos++;
+                    totalHoras += os.tempoExecutado;
+                }
+            }
+        }
+
+        if (totalServicos > 0) {
+            printf("  Total de serviços executados: %d\n", totalServicos);
+            printf("  Tempo médio de execução: %.2f horas por serviço.\n", totalHoras / totalServicos);
+        } else {
+            printf("  Nenhum serviço finalizado neste ano.\n");
+        }
+    }
+
+    // --- Relatório 6: Geral da Empresa ---
+    printf("\n===========================================================\n");
+    printf("  RELATÓRIO ANUAL GERAL DA EMPRESA (ANO: %d)\n", anoRelatorio);
+    printf("===========================================================\n");
+
+    int totalServicosEmpresa = 0;
+    float totalHorasEmpresa = 0.0;
+    OrdemServico os_geral;
+    rewind(fOs);
+    while (fread(&os_geral, sizeof(OrdemServico), 1, fOs) == 1) {
+        if (os_geral.finalizado == 1) {
+            int dia, mes, ano;
+            parseData(os_geral.dataConclusao, &dia, &mes, &ano);
+            if (ano == anoRelatorio) {
+                totalServicosEmpresa++;
+                totalHorasEmpresa += os_geral.tempoExecutado;
+            }
+        }
+    }
+
+    if (totalServicosEmpresa > 0) {
+        printf("  Total de serviços executados na empresa: %d\n", totalServicosEmpresa);
+        printf("  Tempo médio de execução geral: %.2f horas por serviço.\n", totalHorasEmpresa / totalServicosEmpresa);
+    } else {
+        printf("  Nenhum serviço finalizado na empresa neste ano.\n");
+    }
+
+    fclose(fFunc);
+    fclose(fOs);
+}
+
+// =================================================================================
+// FUNÇÕES NOVAS: Exportação de dados e gestão de retirada
+// =================================================================================
+
+// Funcionalidade 7: Exportar dados para CSV
+void exportarDados() {
+    // Exportar Clientes
+    FILE *fCliDat = fopen("clientes.dat", "rb");
+    FILE *fCliCsv = fopen("export_clientes.csv", "w");
+    if (fCliDat && fCliCsv) {
+        fprintf(fCliCsv, "ID,Nome,Telefone,Email\n");
+        Cliente c;
+        while(fread(&c, sizeof(Cliente), 1, fCliDat) == 1) {
+            fprintf(fCliCsv, "%d,%s,%s,%s\n", c.id, c.nome, c.telefone, c.email);
+        }
+        fclose(fCliDat);
+        fclose(fCliCsv);
+        printf("Dados de clientes exportados para export_clientes.csv\n");
+    }
+
+    // Exportar Funcionários
+    FILE *fFuncDat = fopen("funcionarios.dat", "rb");
+    FILE *fFuncCsv = fopen("export_funcionarios.csv", "w");
+    if (fFuncDat && fFuncCsv) {
+        fprintf(fFuncCsv, "ID,Nome,Telefone,Cargo,TotalHorasTrabalhadas,ServicosExecutados\n");
+        Funcionario func;
+        while(fread(&func, sizeof(Funcionario), 1, fFuncDat) == 1) {
+            fprintf(fFuncCsv, "%d,%s,%s,%s,%.2f,%d\n", func.id, func.nome, func.telefone, func.cargo, func.totalHorasTrabalhadas, func.servicosExecutados);
+        }
+        fclose(fFuncDat);
+        fclose(fFuncCsv);
+        printf("Dados de funcionários exportados para export_funcionarios.csv\n");
+    }
+
+    // Adicione aqui a exportação para os outros arquivos (Peças, Fornecedores, etc.) seguindo a mesma lógica.
+    printf("Processo de exportação finalizado.\n");
+}
+
+
+// Função para registrar que um item foi retirado pelo cliente
+void registrarRetiradaServico() {
+    int id, encontrado = 0;
+    printf("\n-- Registrar Retirada de Serviço pelo Cliente --\n");
+    printf("Digite o ID da ordem de serviço que foi retirada: ");
+    scanf("%d", &id);
+
+    FILE *f = fopen("ordens_servico.dat", "rb+");
+    if (!f) {
+        printf("Erro ao abrir o arquivo de ordens de serviço.\n");
+        return;
+    }
+
+    OrdemServico os;
+    while (fread(&os, sizeof(OrdemServico), 1, f) == 1) {
+        if (os.id == id) {
+            encontrado = 1;
+            if (os.finalizado == 0) {
+                printf("ERRO: Esta Ordem de Serviço ainda não foi finalizada.\n");
+            } else if (os.retirado == 1) {
+                printf("INFO: Esta Ordem de Serviço já consta como retirada.\n");
+            } else {
+                os.retirado = 1;
+                fseek(f, -sizeof(OrdemServico), SEEK_CUR);
+                fwrite(&os, sizeof(OrdemServico), 1, f);
+                printf("Retirada da OS %d registrada com sucesso!\n", id);
+            }
+            break;
+        }
+    }
+
+    if (!encontrado) {
+        printf("Ordem de serviço com ID %d não encontrada.\n", id);
+    }
+    fclose(f);
+}
+
+// =================================================================================
+// FUNÇÕES ORIGINAIS (com pequenas alterações)
+// =================================================================================
+
+// ... (todas as suas funções de cadastro, listagem, edição e exclusão originais vão aqui)
+// Exemplo: cadastrarTipoServico, listarTiposServico, etc...
+// A única alteração necessária é na função finalizarOrdemServico e na criação de OS.
+
+// Na função cadastrarTipoServico, quando a OS é criada, inicialize o novo campo:
+// ...
+// os.finalizado = 0;
+// os.retirado = 0; // <-- ADICIONAR ESTA LINHA
+// os.tempoExecutado = 0.0;
+// ...
+
+// ALTERADO: Função finalizarOrdemServico para incluir o status 'retirado'
+void finalizarOrdemServico() {
+    int id;
+    printf("\n-- Finalizar Ordem de Serviço --\n"); [cite: 166]
+    printf("Digite o ID da ordem de serviço a ser finalizada: ");
+    scanf("%d", &id);
+    OrdemServico os; [cite: 167]
+    int encontrado = 0;
+
+    FILE *f = fopen("ordens_servico.dat", "rb+");
+    if (!f) { [cite: 168]
+        printf("Erro ao abrir o arquivo de ordens de serviço.\n");
+        return; [cite: 169]
+    }
+
+    while (fread(&os, sizeof(OrdemServico), 1, f) == 1) {
+        if (os.id == id) {
+            encontrado = 1;
+            if (os.finalizado) { [cite: 170]
+                printf("Esta ordem de serviço já foi finalizada.\n");
+                fclose(f); [cite: 171]
+                return;
+            }
+
+            printf("Data de conclusão (DD/MM/AAAA): ");
+            scanf("%s", os.dataConclusao); [cite: 172]
+            printf("Tempo executado (em horas): ");
+            scanf("%f", &os.tempoExecutado);
+            os.finalizado = 1;
+            os.retirado = 0; // <-- NOVO: Ao finalizar, o item ainda não foi retirado.
+
+            fseek(f, -sizeof(OrdemServico), SEEK_CUR);
+            fwrite(&os, sizeof(OrdemServico), 1, f);
+            
+            // Atualiza funcionário
+            FILE *ff = fopen("funcionarios.dat", "rb+"); [cite: 173]
+            if (!ff) { [cite: 174]
+                printf("Erro ao abrir arquivo de funcionários.\n");
+                fclose(f); // Fecha o primeiro arquivo antes de sair
+                return;
+            }
+
+            Funcionario func;
+            while (fread(&func, sizeof(Funcionario), 1, ff) == 1) { [cite: 176]
+                if (func.id == os.funcionarioId) {
+                    func.totalHorasTrabalhadas += os.tempoExecutado;
+                    func.servicosExecutados += 1; [cite: 177]
+
+                    fseek(ff, -sizeof(Funcionario), SEEK_CUR);
+                    fwrite(&func, sizeof(Funcionario), 1, ff);
+                    break; [cite: 178]
+                }
+            }
+            fclose(ff);
+            printf("Ordem de serviço finalizada com sucesso!\n"); [cite: 179]
+            fclose(f); // Fecha o arquivo principal após o sucesso
+            return;
+        }
+    }
+
+    fclose(f);
+    if (!encontrado) { [cite: 180]
+        printf("Ordem de serviço com ID %d não encontrada.\n", id); [cite: 181]
+    }
+}
+
+
+// =================================================================================
+// MENUS (com as novas opções de Relatórios e Exportação)
+// =================================================================================
+
+// NOVO: Menu para centralizar a geração de relatórios
+void menuRelatorios() {
+    int opcao;
+    do {
+        printf("\n========= MENU DE RELATÓRIOS =========\n");
+        printf("1. Serviços Pendentes (Dia/Semana)\n");
+        printf("2. Serviços Finalizados, Não Retirados (Dia/Semana)\n");
+        printf("3. Desempenho por Funcionário (Dia/Semana)\n");
+        printf("4. Relatórios Anuais (Geral e Individual)\n");
+        printf("0. Voltar ao Menu Principal\n");
+        printf("Escolha uma opção: ");
+        scanf("%d", &opcao);
+
+        switch (opcao) {
+            case 1:
+                relatorioServicosPendentes();
+                break;
+            case 2:
+                relatorioServicosNaoRetirados();
+                break;
+            case 3:
+                relatoriosPorFuncionario();
+                break;
+            case 4:
+                relatoriosAnuais();
+                break;
+            case 0:
+                printf("Voltando...\n");
+                break;
+            default:
+                printf("Opção inválida.\n");
+        }
+    } while (opcao != 0);
+}
+
+// ALTERADO: Menu Principal para incluir as novas funcionalidades
+void menuEntradas() {
+    int opcao;
+    do {
+        printf("\n============ MENU PRINCIPAL ============\n"); [cite: 235]
+        printf("--- GESTÃO ---\n");
+        printf("1. Gerenciar Tipos de Serviço\n"); [cite: 236]
+        printf("2. Gerenciar Clientes\n"); [cite: 236]
+        printf("3. Gerenciar Funcionários\n");
+        printf("4. Gerenciar Peças\n");
+        printf("5. Gerenciar Fornecedores\n");
+        printf("6. Gerenciar Classes de Serviço\n");
+        printf("\n--- OPERAÇÕES ---\n");
+        printf("7. Finalizar Ordem de Serviço\n");
+        printf("8. Registrar Retirada de Serviço\n");
+        printf("\n--- SISTEMA ---\n");
+        printf("9. Gerar Relatórios\n");
+        printf("10. Exportar Dados para Arquivo Externo\n");
+        printf("11. Inicializar Sistema\n");
+        printf("0. Sair\n");
+        printf("========================================\n");
+        printf("Escolha uma opção: "); [cite: 238]
+        scanf("%d", &opcao);
+
+        switch (opcao) {
+            case 1: menuTiposServico(); break;
+            case 2: menuClientes(); break;
+            case 3: menuFuncionarios(); break;
+            case 4: menuPecas(); break;
+            case 5: menuFornecedores(); break;
+            case 6: menuClassesServico(); break;
+            case 7: finalizarOrdemServico(); break;
+            case 8: registrarRetiradaServico(); break;
+            case 9: menuRelatorios(); break;
+            case 10: exportarDados(); break;
+            case 11: inicializarSistema(); break;
+            case 0: printf("Encerrando sistema...\n"); break;
+            default: printf("Opção inválida.\n"); [cite: 241]
+        }
+    } while (opcao != 0);
+}
+
+// ... (Restante do código original, como a função start() e main(), permanece o mesmo)
+// Você só precisa garantir que a função start() chame o novo menuEntradas()
